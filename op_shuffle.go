@@ -7,7 +7,7 @@ import (
 
 	"github.com/starkandwayne/goutils/tree"
 
-	log "github.com/geofffranks/spruce/log"
+	log "github.com/bedag/spruce/log"
 )
 
 // ShuffleOperator ...

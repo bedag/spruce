@@ -1,4 +1,4 @@
-module github.com/geofffranks/spruce
+module github.com/bedag/spruce
 
 go 1.22
 

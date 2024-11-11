@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	log "github.com/geofffranks/spruce/log"
+	log "github.com/bedag/spruce/log"
 	"github.com/starkandwayne/goutils/ansi"
 	"github.com/starkandwayne/goutils/tree"
 )

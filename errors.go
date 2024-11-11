@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/geofffranks/spruce/log"
+	"github.com/bedag/spruce/log"
 	"github.com/starkandwayne/goutils/ansi"
 )
 

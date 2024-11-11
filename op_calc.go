@@ -12,7 +12,7 @@ import (
 	"github.com/starkandwayne/goutils/ansi"
 	"github.com/starkandwayne/goutils/tree"
 
-	log "github.com/geofffranks/spruce/log"
+	log "github.com/bedag/spruce/log"
 )
 
 // CalcOperator is invoked with (( calc <expression> ))

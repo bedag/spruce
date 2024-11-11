@@ -14,7 +14,7 @@ import (
 	"github.com/geofffranks/simpleyaml"
 	"github.com/geofffranks/yaml"
 
-	. "github.com/geofffranks/spruce/log"
+	. "github.com/bedag/spruce/log"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -881,7 +881,7 @@ quux: quux
 `)
 		})
 
-		Convey("Issue #158 prune doesn't work when goes at the end (regression?) - variant A (https://github.com/geofffranks/spruce/issues/158)", func() {
+		Convey("Issue #158 prune doesn't work when goes at the end (regression?) - variant A (https://github.com/bedag/spruce/issues/158)", func() {
 			os.Args = []string{"spruce", "merge", "../../assets/prune/issue-158/test.yml", "../../assets/prune/issue-158/prune.yml"}
 			stdout = ""
 			stderr = ""
@@ -893,7 +893,7 @@ quux: quux
 `)
 		})
 
-		Convey("Issue #158 prune doesn't work when goes at the end (regression?) - variant B (https://github.com/geofffranks/spruce/issues/158)", func() {
+		Convey("Issue #158 prune doesn't work when goes at the end (regression?) - variant B (https://github.com/bedag/spruce/issues/158)", func() {
 			os.Args = []string{"spruce", "merge", "../../assets/prune/issue-158/prune.yml", "../../assets/prune/issue-158/test.yml"}
 			stdout = ""
 			stderr = ""

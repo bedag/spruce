@@ -12,7 +12,7 @@ import (
 	"github.com/cloudfoundry-community/vaultkv"
 	"github.com/starkandwayne/goutils/ansi"
 
-	log "github.com/geofffranks/spruce/log"
+	log "github.com/bedag/spruce/log"
 	"github.com/starkandwayne/goutils/tree"
 
 	// Use geofffranks forks to persist the fix in https://github.com/go-yaml/yaml/pull/133/commits

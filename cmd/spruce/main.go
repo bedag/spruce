@@ -14,8 +14,8 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/starkandwayne/goutils/ansi"
 
-	. "github.com/geofffranks/spruce"
-	. "github.com/geofffranks/spruce/log"
+	. "github.com/bedag/spruce"
+	. "github.com/bedag/spruce/log"
 
 	"strings"
 

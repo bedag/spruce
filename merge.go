@@ -10,7 +10,7 @@ import (
 
 	"github.com/starkandwayne/goutils/ansi"
 
-	log "github.com/geofffranks/spruce/log"
+	log "github.com/bedag/spruce/log"
 )
 
 type listOp int

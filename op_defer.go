@@ -6,7 +6,7 @@ import (
 
 	"github.com/starkandwayne/goutils/tree"
 
-	log "github.com/geofffranks/spruce/log"
+	log "github.com/bedag/spruce/log"
 )
 
 // DeferOperator sheds the "defer" command off of (( defer args args args )) and
