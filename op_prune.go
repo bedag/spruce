@@ -1,11 +1,9 @@
 package spruce
 
 import (
-	"fmt"
-
 	"github.com/starkandwayne/goutils/tree"
 
-	. "github.com/geofffranks/spruce/log"
+	log "github.com/geofffranks/spruce/log"
 )
 
 var keysToPrune []string
@@ -13,7 +11,7 @@ var keysToPrune []string
 func addToPruneListIfNecessary(paths ...string) {
 	for _, path := range paths {
 		if !isIncluded(keysToPrune, path) {
-			DEBUG("adding '%s' to the list of paths to prune", path)
+			log.DEBUG("adding '%s' to the list of paths to prune", path)
 			keysToPrune = append(keysToPrune, path)
 		}
 	}
@@ -49,10 +47,10 @@ func (PruneOperator) Dependencies(_ *Evaluator, _ []*Expr, _ []*tree.Cursor, aut
 
 // Run ...
 func (PruneOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
-	DEBUG("running (( prune ... )) operation at $.%s", ev.Here)
-	defer DEBUG("done with (( prune ... )) operation at $.%s\n", ev.Here)
+	log.DEBUG("running (( prune ... )) operation at $.%s", ev.Here)
+	defer log.DEBUG("done with (( prune ... )) operation at $.%s\n", ev.Here)
 
-	addToPruneListIfNecessary(fmt.Sprintf("%s", ev.Here))
+	addToPruneListIfNecessary(ev.Here.String())
 
 	// simply replace it with nil (will be pruned at the end anyway)
 	return &Response{

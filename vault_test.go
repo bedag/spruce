@@ -155,7 +155,7 @@ secret: REDACTED
 						switch r.URL.Path {
 						case "/v1/sys/internal/ui/mounts":
 							w.WriteHeader(200)
-							fmt.Fprintf(w, mountsResp)
+							fmt.Fprint(w, mountsResp)
 						case "/v1/secret/hand":
 							w.WriteHeader(200)
 							fmt.Fprintf(w, `{"data":{"shake":"knock, knock"}}`)
@@ -191,7 +191,7 @@ secret: REDACTED
 						switch r.URL.Path {
 						case "/v1/sys/internal/ui/mounts":
 							w.WriteHeader(200)
-							fmt.Fprintf(w, mountsResp)
+							fmt.Fprint(w, mountsResp)
 						case "/v1/secret/data/hand":
 							w.WriteHeader(200)
 							fmt.Fprintf(w, `{"data":{"data:{"shake":"knock, knock"}}`)
@@ -245,7 +245,6 @@ key: testing
 `)
 
 		os.Setenv("VAULT_ADDR", mock.URL)
-		oldhome := os.Getenv("HOME")
 		os.Setenv("HOME", "assets/home/auth")
 		os.Setenv("VAULT_TOKEN", "")
 		RunTests(`
@@ -352,7 +351,7 @@ secret: (( vault "hand3:shake" ))
 
 `)
 
-		oldhome = os.Getenv("HOME")
+		oldhome := os.Getenv("HOME")
 		os.Setenv("HOME", "assets/home/unauth")
 		SkipVault = false
 		os.Setenv("VAULT_TOKEN", "")
@@ -363,7 +362,7 @@ secret: (( vault "secret/hand4:shake" ))
 
 ---
 1 error(s) detected:
- - $.secret: Error during Vault client initialization: Failed to determine Vault URL / token, and the $REDACT environment variable is not set.
+ - $.secret: Error during Vault client initialization: failed to determine Vault URL / token, and the $REDACT environment variable is not set
 
 `)
 		os.Setenv("HOME", oldhome)

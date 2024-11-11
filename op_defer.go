@@ -6,7 +6,7 @@ import (
 
 	"github.com/starkandwayne/goutils/tree"
 
-	. "github.com/geofffranks/spruce/log"
+	log "github.com/geofffranks/spruce/log"
 )
 
 // DeferOperator sheds the "defer" command off of (( defer args args args )) and
@@ -32,9 +32,9 @@ func (DeferOperator) Dependencies(_ *Evaluator, _ []*Expr, _ []*tree.Cursor, _ [
 // Run chops off "defer" and leaves the args in double parens. Need to
 // reconstruct the operator string
 func (DeferOperator) Run(_ *Evaluator, args []*Expr) (*Response, error) {
-	DEBUG("Running defer operator...")
+	log.DEBUG("Running defer operator...")
 	if len(args) == 0 {
-		return nil, fmt.Errorf("Defer has no arguments - what are you deferring?")
+		return nil, fmt.Errorf("defer has no arguments - what are you deferring?")
 	}
 
 	components := []string{"(("} //Join these with spaces at the end
@@ -44,7 +44,7 @@ func (DeferOperator) Run(_ *Evaluator, args []*Expr) (*Response, error) {
 	}
 	components = append(components, "))")
 
-	DEBUG("Returning from defer operator")
+	log.DEBUG("Returning from defer operator")
 
 	return &Response{
 		Type:  Replace,

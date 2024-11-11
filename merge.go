@@ -10,7 +10,7 @@ import (
 
 	"github.com/starkandwayne/goutils/ansi"
 
-	. "github.com/geofffranks/spruce/log"
+	log "github.com/geofffranks/spruce/log"
 )
 
 type listOp int
@@ -29,13 +29,14 @@ type Merger struct {
 	AppendByDefault bool
 
 	Errors MultiError
-	depth  int
 }
 
 // ModificationDefinition encapsulates the details of an array modification:
 // (1) the type of modification, e.g. insert, delete, replace
 // (2) an optional guide to the specific part of the array to be modified,
-//    for example the index at which an insertion should be done
+//
+//	for example the index at which an insertion should be done
+//
 // (3) an optional list of entries to be added or merged into the array
 type ModificationDefinition struct {
 	listOp listOp
@@ -77,17 +78,17 @@ func getDefaultIdentifierKey() string {
 }
 
 func deepCopy(orig interface{}) interface{} {
-	switch orig.(type) {
+	switch orig := orig.(type) {
 	case map[interface{}]interface{}:
 		x := map[interface{}]interface{}{}
-		for k, v := range orig.(map[interface{}]interface{}) {
+		for k, v := range orig {
 			x[k] = deepCopy(v)
 		}
 		return x
 
 	case []interface{}:
-		x := make([]interface{}, len(orig.([]interface{})))
-		for i, v := range orig.([]interface{}) {
+		x := make([]interface{}, len(orig))
+		for i, v := range orig {
 			x[i] = deepCopy(v)
 		}
 		return x
@@ -104,29 +105,26 @@ func (m *Merger) Merge(a map[interface{}]interface{}, b map[interface{}]interfac
 }
 
 func (m *Merger) mergeMap(orig map[interface{}]interface{}, n map[interface{}]interface{}, node string) {
-	mergeRx := regexp.MustCompile(`^\s*\Q((\E\s*merge\s*.*\Q))\E`)
 	for k, val := range n {
 		path := fmt.Sprintf("%s.%v", node, k)
-		if s, ok := val.(string); ok && mergeRx.MatchString(s) {
-			m.Errors.Append(ansi.Errorf("@m{%s}: @R{inappropriate use of} @c{(( merge ))} @R{operator outside of a list} (this is @G{spruce}, after all)", path))
+		if s, ok := val.(string); ok && matchPattern(s) {
+			mergeRx := regexp.MustCompile(`^\s*\Q((\E\s*merge\s*.*\Q))\E`)
+			if mergeRx.MatchString(s) {
+				m.Errors.Append(ansi.Errorf("@m{%s}: @R{inappropriate use of} @c{(( merge ))} @R{operator outside of a list} (this is @G{spruce}, after all)", path))
+			}
 		}
 
 		if _, exists := orig[k]; exists {
-			DEBUG("%s: found upstream, merging it", path)
+			log.DEBUG("%s: found upstream, merging it", path)
 			orig[k] = m.mergeObj(orig[k], val, path)
 		} else {
-			DEBUG("%s: not found upstream, adding it", path)
+			log.DEBUG("%s: not found upstream, adding it", path)
 			orig[k] = m.mergeObj(nil, deepCopy(val), path)
 		}
 	}
 }
 
 func (m *Merger) mergeObj(orig interface{}, n interface{}, node string) interface{} {
-	// regular expression to search for prune and sort operator to make their
-	// special behavior possible
-	pruneRx := regexp.MustCompile(`^\s*\Q((\E\s*prune\s*\Q))\E`)
-	sortRx := regexp.MustCompile(`^\s*\Q((\E\s*sort(?:\s+by\s+(.*?))?\s*\Q))\E$`)
-
 	// prune/sort operator special behavior I:
 	// operator is defined in the original object and will now be overwritten by
 	// the new value. Therefore, remember that the operator was here at that path
@@ -140,30 +138,44 @@ func (m *Merger) mergeObj(orig interface{}, n interface{}, node string) interfac
 	origString, origOk := orig.(string)
 	newString, newOk := n.(string)
 	switch {
-	case origOk && pruneRx.MatchString(origString):
-		DEBUG("%s: a (( prune )) operator is about to be replaced, check if its path needs to be saved", node)
-		addToPruneListIfNecessary(strings.Replace(node, "$.", "", -1))
+	case origOk && matchPattern(origString):
+		// regular expression to search for prune operator
+		pruneRx := regexp.MustCompile(`^\s*\Q((\E\s*prune\s*\Q))\E`)
+		if pruneRx.MatchString(origString) {
+			log.DEBUG("%s: a (( prune )) operator is about to be replaced, check if its path needs to be saved", node)
+			addToPruneListIfNecessary(strings.Replace(node, "$.", "", -1))
+		}
+	case newOk && matchPattern(newString) && orig != nil:
+		// regular expression to search for prune operator
+		pruneRx := regexp.MustCompile(`^\s*\Q((\E\s*prune\s*\Q))\E`)
+		if pruneRx.MatchString(newString) {
+			log.DEBUG("%s: a (( prune )) operator is about to replace existing content, check if its path needs to be saved", node)
+			addToPruneListIfNecessary(strings.Replace(node, "$.", "", -1))
+			return orig
+		}
+	case origOk && matchPattern(origString):
+		// regular expression to search for sort operator
+		sortRx := regexp.MustCompile(`^\s*\Q((\E\s*sort(?:\s+by\s+(.*?))?\s*\Q))\E$`)
+		if sortRx.MatchString(origString) {
+			log.DEBUG("%s: a (( sort )) operator is about to be replaced, check if its path needs to be saved", node)
+			addToSortListIfNecessary(origString, strings.Replace(node, "$.", "", -1))
+		}
 
-	case newOk && pruneRx.MatchString(newString) && orig != nil:
-		DEBUG("%s: a (( prune )) operator is about to replace existing content, check if its path needs to be saved", node)
-		addToPruneListIfNecessary(strings.Replace(node, "$.", "", -1))
-		return orig
-
-	case origOk && sortRx.MatchString(origString):
-		DEBUG("%s: a (( sort )) operator is about to be replaced, check if its path needs to be saved", node)
-		addToSortListIfNecessary(origString, strings.Replace(node, "$.", "", -1))
-
-	case newOk && sortRx.MatchString(newString) && orig != nil:
-		DEBUG("%s: a (( sort )) operator is about to replace existing content, check if its path needs to be saved", node)
-		addToSortListIfNecessary(newString, strings.Replace(node, "$.", "", -1))
-		return orig
+	case newOk && matchPattern(newString) && orig != nil:
+		// regular expression to search for sort operator
+		sortRx := regexp.MustCompile(`^\s*\Q((\E\s*sort(?:\s+by\s+(.*?))?\s*\Q))\E$`)
+		if sortRx.MatchString(newString) {
+			log.DEBUG("%s: a (( sort )) operator is about to replace existing content, check if its path needs to be saved", node)
+			addToSortListIfNecessary(newString, strings.Replace(node, "$.", "", -1))
+			return orig
+		}
 	}
 
 	switch t := n.(type) {
 	case map[interface{}]interface{}:
 		switch orig.(type) {
 		case map[interface{}]interface{}:
-			DEBUG("%s: performing map merge", node)
+			log.DEBUG("%s: performing map merge", node)
 			m.mergeMap(orig.(map[interface{}]interface{}), n.(map[interface{}]interface{}), node)
 			return orig
 
@@ -173,14 +185,14 @@ func (m *Merger) mergeObj(orig interface{}, n interface{}, node string) interfac
 			return orig
 
 		default:
-			DEBUG("%s: replacing with new data (original was not a map)", node)
+			log.DEBUG("%s: replacing with new data (original was not a map)", node)
 			return t
 		}
 
 	case []interface{}:
 		switch orig.(type) {
 		case []interface{}:
-			DEBUG("%s: performing array merge", node)
+			log.DEBUG("%s: performing array merge", node)
 			return m.mergeArray(orig.([]interface{}), n.([]interface{}), node)
 
 		case nil:
@@ -188,24 +200,19 @@ func (m *Merger) mergeObj(orig interface{}, n interface{}, node string) interfac
 			return m.mergeArray(orig, n.([]interface{}), node)
 
 		default:
-			if orig == nil {
-				DEBUG("%s: performing array merge (original was nil)", node)
-				return m.mergeArray([]interface{}{}, n.([]interface{}), node)
-			}
-
-			DEBUG("%s: replacing with new data (original was not an array)", node)
+			log.DEBUG("%s: replacing with new data (original was not an array)", node)
 			return t
 		}
 
 	default:
-		DEBUG("%s: replacing with new data (new data is neither map nor array)", node)
+		log.DEBUG("%s: replacing with new data (new data is neither map nor array)", node)
 		return t
 	}
 }
 
 func (m *Merger) mergeArray(orig []interface{}, n []interface{}, node string) []interface{} {
 	modificationDefinitions := getArrayModifications(n, isSimpleList(orig))
-	DEBUG("%s: performing %d modification operations against list", node, len(modificationDefinitions))
+	log.DEBUG("%s: performing %d modification operations against list", node, len(modificationDefinitions))
 
 	// Create a copy of orig for the (multiple) modifications that are about to happen
 	result := make([]interface{}, len(orig))
@@ -213,7 +220,7 @@ func (m *Merger) mergeArray(orig []interface{}, n []interface{}, node string) []
 
 	// Process the modifications definitions that were found in the new list
 	for i, modificationDefinition := range modificationDefinitions {
-		DEBUG("  #%d %#v", i, modificationDefinition)
+		log.DEBUG("  #%d %#v", i, modificationDefinition)
 
 		// insert/delete operations will use a list index later in this loop block
 		var idx int
@@ -296,7 +303,7 @@ func (m *Merger) mergeArray(orig []interface{}, n []interface{}, node string) []
 			}
 
 			// Sanity check new list, depending on the operation type (delete or insert)
-			if delete == false {
+			if !delete {
 
 				// Sanity check new list, list must contain key/id based entries
 				if err := canKeyMergeArray("new", modificationDefinition.list, node, key); err != nil {
@@ -341,10 +348,10 @@ func (m *Merger) mergeArray(orig []interface{}, n []interface{}, node string) []
 		}
 
 		if modificationDefinition.listOp != listOpDelete {
-			DEBUG("%s: inserting %d new elements to existing array at index %d", node, len(modificationDefinition.list), idx)
+			log.DEBUG("%s: inserting %d new elements to existing array at index %d", node, len(modificationDefinition.list), idx)
 			result = insertIntoList(result, idx, modificationDefinition.list)
 		} else {
-			DEBUG("%s: deleting element at array index %d", node, idx)
+			log.DEBUG("%s: deleting element at array index %d", node, idx)
 			result = deleteIndexFromList(result, idx)
 		}
 	}
@@ -355,7 +362,7 @@ func (m *Merger) mergeArray(orig []interface{}, n []interface{}, node string) []
 // The magic which chooses to merge, append, or inline based on the contents of
 // the array
 func (m *Merger) mergeArrayDefault(orig []interface{}, n []interface{}, node string) []interface{} {
-	DEBUG("%s: performing index-based array merge", node)
+	log.DEBUG("%s: performing index-based array merge", node)
 	var err error
 	key := getDefaultIdentifierKey()
 
@@ -386,7 +393,7 @@ func (m *Merger) mergeArrayInline(orig []interface{}, n []interface{}, node stri
 	if len(n) > len(orig) {
 		length = len(n)
 	}
-	merged := make([]interface{}, length, length)
+	merged := make([]interface{}, length)
 
 	var last int
 	for i := range orig {
@@ -406,7 +413,7 @@ func (m *Merger) mergeArrayInline(orig []interface{}, n []interface{}, node stri
 	// grab the remainder of n (if any) and append the to the result
 	for i := last; i < len(n); i++ {
 		path := fmt.Sprintf("%s.%d", node, i)
-		DEBUG("%s: appending new data to existing array", path)
+		log.DEBUG("%s: appending new data to existing array", path)
 		merged[i] = m.mergeObj(nil, n[i], path)
 	}
 
@@ -414,7 +421,7 @@ func (m *Merger) mergeArrayInline(orig []interface{}, n []interface{}, node stri
 }
 
 func (m *Merger) mergeArrayByKey(orig []interface{}, n []interface{}, node string, key string) []interface{} {
-	merged := make([]interface{}, len(orig), len(orig))
+	merged := make([]interface{}, len(orig))
 	newMap := make(map[interface{}]interface{})
 	for _, o := range n {
 		obj := o.(map[interface{}]interface{})
@@ -436,7 +443,7 @@ func (m *Merger) mergeArrayByKey(orig []interface{}, n []interface{}, node strin
 		obj := obj.(map[interface{}]interface{})
 		if _, ok := newMap[obj[key]]; ok {
 			path := fmt.Sprintf("%s.%d", node, i)
-			DEBUG("%s: appending new data to merged array", path)
+			log.DEBUG("%s: appending new data to merged array", path)
 			merged = append(merged, m.mergeObj(nil, obj, path))
 			i++
 		}
@@ -450,154 +457,156 @@ func (m *Merger) mergeArrayByKey(orig []interface{}, n []interface{}, node strin
 // object in the returned will always represent the default merge behavior.
 func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDefinition {
 	// Starts with an entry representing the default merge behavior
-	result := []ModificationDefinition{ModificationDefinition{listOp: listOpMergeDefault}}
+	result := []ModificationDefinition{{listOp: listOpMergeDefault}}
 
 	// easy shortcircuit
 	if len(obj) == 0 {
 		return result
 	}
 
-	mergeRegEx := regexp.MustCompile("^\\Q((\\E\\s*merge\\s*\\Q))\\E$")
-	mergeOnKeyRegEx := regexp.MustCompile("^\\Q((\\E\\s*merge\\s+(on)\\s+(.+)\\s*\\Q))\\E$")
-	replaceRegEx := regexp.MustCompile("^\\Q((\\E\\s*replace\\s*\\Q))\\E$")
-	inlineRegEx := regexp.MustCompile("^\\Q((\\E\\s*inline\\s*\\Q))\\E$")
-	appendRegEx := regexp.MustCompile("^\\Q((\\E\\s*append\\s*\\Q))\\E$")
-	prependRegEx := regexp.MustCompile("^\\Q((\\E\\s*prepend\\s*\\Q))\\E$")
-	insertByIdxRegEx := regexp.MustCompile("^\\Q((\\E\\s*insert\\s+(after|before)\\s+(\\d+)\\s*\\Q))\\E$")
-	insertByNameRegEx := regexp.MustCompile("^\\Q((\\E\\s*insert\\s+(after|before)\\s+([^ ]+)?\\s*\"(.+)\"\\s*\\Q))\\E$")
-	deleteByIdxRegEx := regexp.MustCompile("^\\Q((\\E\\s*delete\\s+(-?\\d+)\\s*\\Q))\\E$")
-	deleteByNameRegEx := regexp.MustCompile("^\\Q((\\E\\s*delete\\s+([^ ]+)?\\s*\"(.+)\"\\s*\\Q))\\E$")
-	deleteByNameUnquotedRegEx := regexp.MustCompile("^\\Q((\\E\\s*delete\\s+([^ ]+)?\\s*(.+)\\s*\\Q))\\E$")
-
 	for _, entry := range obj {
 		e, isString := entry.(string)
-		switch {
-		case !isString:
-			//Do absolutely nothing
+		if matchPattern(e) {
+			mergeRegEx := regexp.MustCompile(`^\Q((\E\s*merge\s*\Q))\E$`)
+			mergeOnKeyRegEx := regexp.MustCompile(`^\Q((\E\s*merge\s+(on)\s+(.+)\s*\Q))\E$`)
+			replaceRegEx := regexp.MustCompile(`^\Q((\E\s*replace\s*\Q))\E$`)
+			inlineRegEx := regexp.MustCompile(`^\Q((\E\s*inline\s*\Q))\E$`)
+			appendRegEx := regexp.MustCompile(`^\Q((\E\s*append\s*\Q))\E$`)
+			prependRegEx := regexp.MustCompile(`^\Q((\E\s*prepend\s*\Q))\E$`)
+			insertByIdxRegEx := regexp.MustCompile(`^\Q((\E\s*insert\s+(after|before)\s+(\d+)\s*\Q))\E$`)
+			insertByNameRegEx := regexp.MustCompile(`^\Q((\E\s*insert\s+(after|before)\s+([^ ]+)?\s*\"(.+)\"\s*\Q))\E$`)
+			deleteByIdxRegEx := regexp.MustCompile(`^\Q((\E\s*delete\s+(-?\d+)\s*\Q))\E$`)
+			deleteByNameRegEx := regexp.MustCompile(`^\Q((\E\s*delete\s+([^ ]+)?\s*\"(.+)\"\s*\Q))\E$`)
+			deleteByNameUnquotedRegEx := regexp.MustCompile(`^\Q((\E\s*delete\s+([^ ]+)?\s*(.+)\s*\Q))\E$`)
 
-		case mergeRegEx.MatchString(e): // check for (( merge ))
-			result = append(result, ModificationDefinition{listOp: listOpMergeOnKey})
-			continue
+			switch {
+			case !isString:
+				//Do absolutely nothing
 
-		case mergeOnKeyRegEx.MatchString(e): // check for (( merge on "key" ))
-			/* #0 is the whole string,
-			 * #1 is string 'on'
-			 * #2 is the named-entry identifying key
-			 */
-			if captures := mergeOnKeyRegEx.FindStringSubmatch(e); len(captures) == 3 {
-				key := strings.TrimSpace(captures[2])
-				result = append(result, ModificationDefinition{listOp: listOpMergeOnKey, key: key})
+			case mergeRegEx.MatchString(e): // check for (( merge ))
+				result = append(result, ModificationDefinition{listOp: listOpMergeOnKey})
 				continue
-			}
 
-		case inlineRegEx.MatchString(e): // check for (( inline ))
-			result = append(result, ModificationDefinition{listOp: listOpMergeInline})
-			continue
-
-		case replaceRegEx.MatchString(e): // check for (( replace ))
-			result = append(result, ModificationDefinition{listOp: listOpReplace})
-			continue
-
-		case appendRegEx.MatchString(e): // check for (( append ))
-			result = append(result, ModificationDefinition{listOp: listOpInsert, index: -1})
-			continue
-
-		case prependRegEx.MatchString(e): // check for (( prepend ))
-			result = append(result, ModificationDefinition{listOp: listOpInsert, index: 0})
-			continue
-
-		case insertByIdxRegEx.MatchString(e): // check for (( insert ... <idx> ))
-			/* #0 is the whole string,
-			 * #1 is after or before
-			 * #2 is the insertion index
-			 */
-			if captures := insertByIdxRegEx.FindStringSubmatch(e); len(captures) == 3 {
-				relative := strings.TrimSpace(captures[1])
-				position := strings.TrimSpace(captures[2])
-				if idx, err := strconv.Atoi(position); err == nil {
-					result = append(result, ModificationDefinition{listOp: listOpInsert, index: idx, relative: relative})
+			case mergeOnKeyRegEx.MatchString(e): // check for (( merge on "key" ))
+				/* #0 is the whole string,
+				 * #1 is string 'on'
+				 * #2 is the named-entry identifying key
+				 */
+				if captures := mergeOnKeyRegEx.FindStringSubmatch(e); len(captures) == 3 {
+					key := strings.TrimSpace(captures[2])
+					result = append(result, ModificationDefinition{listOp: listOpMergeOnKey, key: key})
 					continue
 				}
-			}
 
-		case insertByNameRegEx.MatchString(e): // check for (( insert ... "<name>" ))
-			/* #0 is the whole string,
-			 * #1 is after or before
-			 * #2 contains the optional '<key>' string
-			 * #3 is finally the target "<name>" string
-			 */
-			if captures := insertByNameRegEx.FindStringSubmatch(entry.(string)); len(captures) == 4 {
-				relative := strings.TrimSpace(captures[1])
-				key := strings.TrimSpace(captures[2])
-				name := strings.TrimSpace(captures[3])
-
-				if key == "" {
-					key = getDefaultIdentifierKey()
-				}
-
-				result = append(result, ModificationDefinition{listOp: listOpInsert, relative: relative, key: key, name: name})
+			case inlineRegEx.MatchString(e): // check for (( inline ))
+				result = append(result, ModificationDefinition{listOp: listOpMergeInline})
 				continue
-			}
 
-		case deleteByIdxRegEx.MatchString(e): // check for (( delete <idx> ))
-			/* #0 is the whole string,
-			 * #1 is idx
-			 */
-			if captures := deleteByIdxRegEx.FindStringSubmatch(e); len(captures) == 2 {
-				position := strings.TrimSpace(captures[1])
-				if idx, err := strconv.Atoi(position); err == nil {
-					result = append(result, ModificationDefinition{listOp: listOpDelete, index: idx})
-					continue
-				}
-			}
-
-		case deleteByNameRegEx.MatchString(e): // check for (( delete "<name>" ))
-			/* #0 is the whole string,
-			 * #1 contains the optional '<key>' string
-			 * #2 is finally the target "<name>" string
-			 */
-			if captures := deleteByNameRegEx.FindStringSubmatch(e); len(captures) == 3 {
-				key := strings.TrimSpace(captures[1])
-				name := strings.TrimSpace(captures[2])
-
-				// illegal state for simple lists, if you have a text with whitespaces, we want to enforce people using quotes
-				if simpleList && key != "" {
-					continue
-				}
-
-				if !simpleList && key == "" {
-					key = getDefaultIdentifierKey()
-				}
-
-				result = append(result, ModificationDefinition{listOp: listOpDelete, key: key, name: name})
+			case replaceRegEx.MatchString(e): // check for (( replace ))
+				result = append(result, ModificationDefinition{listOp: listOpReplace})
 				continue
-			}
 
-		case deleteByNameUnquotedRegEx.MatchString(e): // check for (( delete "<name>" ))
-			/* #0 is the whole string,
-			 * #1 contains the optional '<key>' string
-			 * #2 is finally the target "<name>" string
-			 */
-			if captures := deleteByNameUnquotedRegEx.FindStringSubmatch(e); len(captures) == 3 {
-				key := strings.TrimSpace(captures[1])
-				name := strings.TrimSpace(captures[2])
+			case appendRegEx.MatchString(e): // check for (( append ))
+				result = append(result, ModificationDefinition{listOp: listOpInsert, index: -1})
+				continue
 
-				// illegal state for simple lists, if you have a text with whitespaces, we want to enforce people using quotes
-				if simpleList && key != "" && name != "" {
-					continue
-				}
+			case prependRegEx.MatchString(e): // check for (( prepend ))
+				result = append(result, ModificationDefinition{listOp: listOpInsert, index: 0})
+				continue
 
-				if name == "" {
-					name = key
-					if !simpleList {
-						key = getDefaultIdentifierKey()
-					} else {
-						key = ""
+			case insertByIdxRegEx.MatchString(e): // check for (( insert ... <idx> ))
+				/* #0 is the whole string,
+				 * #1 is after or before
+				 * #2 is the insertion index
+				 */
+				if captures := insertByIdxRegEx.FindStringSubmatch(e); len(captures) == 3 {
+					relative := strings.TrimSpace(captures[1])
+					position := strings.TrimSpace(captures[2])
+					if idx, err := strconv.Atoi(position); err == nil {
+						result = append(result, ModificationDefinition{listOp: listOpInsert, index: idx, relative: relative})
+						continue
 					}
 				}
 
-				result = append(result, ModificationDefinition{listOp: listOpDelete, key: key, name: name})
-				continue
+			case insertByNameRegEx.MatchString(e): // check for (( insert ... "<name>" ))
+				/* #0 is the whole string,
+				 * #1 is after or before
+				 * #2 contains the optional '<key>' string
+				 * #3 is finally the target "<name>" string
+				 */
+				if captures := insertByNameRegEx.FindStringSubmatch(entry.(string)); len(captures) == 4 {
+					relative := strings.TrimSpace(captures[1])
+					key := strings.TrimSpace(captures[2])
+					name := strings.TrimSpace(captures[3])
+
+					if key == "" {
+						key = getDefaultIdentifierKey()
+					}
+
+					result = append(result, ModificationDefinition{listOp: listOpInsert, relative: relative, key: key, name: name})
+					continue
+				}
+
+			case deleteByIdxRegEx.MatchString(e): // check for (( delete <idx> ))
+				/* #0 is the whole string,
+				 * #1 is idx
+				 */
+				if captures := deleteByIdxRegEx.FindStringSubmatch(e); len(captures) == 2 {
+					position := strings.TrimSpace(captures[1])
+					if idx, err := strconv.Atoi(position); err == nil {
+						result = append(result, ModificationDefinition{listOp: listOpDelete, index: idx})
+						continue
+					}
+				}
+
+			case deleteByNameRegEx.MatchString(e): // check for (( delete "<name>" ))
+				/* #0 is the whole string,
+				 * #1 contains the optional '<key>' string
+				 * #2 is finally the target "<name>" string
+				 */
+				if captures := deleteByNameRegEx.FindStringSubmatch(e); len(captures) == 3 {
+					key := strings.TrimSpace(captures[1])
+					name := strings.TrimSpace(captures[2])
+
+					// illegal state for simple lists, if you have a text with whitespaces, we want to enforce people using quotes
+					if simpleList && key != "" {
+						continue
+					}
+
+					if !simpleList && key == "" {
+						key = getDefaultIdentifierKey()
+					}
+
+					result = append(result, ModificationDefinition{listOp: listOpDelete, key: key, name: name})
+					continue
+				}
+
+			case deleteByNameUnquotedRegEx.MatchString(e): // check for (( delete "<name>" ))
+				/* #0 is the whole string,
+				 * #1 contains the optional '<key>' string
+				 * #2 is finally the target "<name>" string
+				 */
+				if captures := deleteByNameUnquotedRegEx.FindStringSubmatch(e); len(captures) == 3 {
+					key := strings.TrimSpace(captures[1])
+					name := strings.TrimSpace(captures[2])
+
+					// illegal state for simple lists, if you have a text with whitespaces, we want to enforce people using quotes
+					if simpleList && key != "" && name != "" {
+						continue
+					}
+
+					if name == "" {
+						name = key
+						if !simpleList {
+							key = getDefaultIdentifierKey()
+						} else {
+							key = ""
+						}
+					}
+
+					result = append(result, ModificationDefinition{listOp: listOpDelete, key: key, name: name})
+					continue
+				}
 			}
 		}
 
@@ -611,7 +620,7 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 }
 
 func isSimpleList(list []interface{}) bool {
-	DEBUG("Going to validate if this is a simple list: %v", list)
+	log.DEBUG("Going to validate if this is a simple list: %v", list)
 
 	if len(list) == 0 {
 		return false
@@ -625,7 +634,7 @@ func isSimpleList(list []interface{}) bool {
 		}
 	}
 	if hash_count == 0 {
-		DEBUG("Working on a simple list")
+		log.DEBUG("Working on a simple list")
 	}
 	return hash_count == 0
 }
@@ -634,14 +643,17 @@ func shouldKeyMergeArray(obj []interface{}) (bool, string) {
 	key := getDefaultIdentifierKey()
 
 	if len(obj) >= 1 && obj[0] != nil && reflect.TypeOf(obj[0]).Kind() == reflect.String {
-		re := regexp.MustCompile("^\\Q((\\E\\s*merge(?:\\s+on\\s+(.*?))?\\s*\\Q))\\E$")
+		o := obj[0].(string)
+		if matchPattern(o) {
+			re := regexp.MustCompile(`^\Q((\E\s*merge(?:\s+on\s+(.*?))?\s*\Q))\E$`)
 
-		if re.MatchString(obj[0].(string)) {
-			keys := re.FindStringSubmatch(obj[0].(string))
-			if keys[1] != "" {
-				key = keys[1]
+			if re.MatchString(o) {
+				keys := re.FindStringSubmatch(o)
+				if keys[1] != "" {
+					key = keys[1]
+				}
+				return true, key
 			}
-			return true, key
 		}
 	}
 	return false, ""

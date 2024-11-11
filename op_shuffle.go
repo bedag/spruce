@@ -7,7 +7,7 @@ import (
 
 	"github.com/starkandwayne/goutils/tree"
 
-	. "github.com/geofffranks/spruce/log"
+	log "github.com/geofffranks/spruce/log"
 )
 
 // ShuffleOperator ...
@@ -30,50 +30,48 @@ func (ShuffleOperator) Dependencies(_ *Evaluator, _ []*Expr, _ []*tree.Cursor, a
 
 // Run ...
 func (ShuffleOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
-	DEBUG("running (( shuffle ... )) operation at $.%s", ev.Here)
-	defer DEBUG("done with (( shuffle ... )) operation at $%s\n", ev.Here)
+	log.DEBUG("running (( shuffle ... )) operation at $.%s", ev.Here)
+	defer log.DEBUG("done with (( shuffle ... )) operation at $%s\n", ev.Here)
 
 	var vals []interface{}
 
 	for i, arg := range args {
 		v, err := arg.Resolve(ev.Tree)
 		if err != nil {
-			DEBUG("     [%d]: resolution failed\n    error: %s", i, err)
+			log.DEBUG("     [%d]: resolution failed\n    error: %s", i, err)
 			return nil, err
 		}
 
 		switch v.Type {
 		case Literal:
-			DEBUG("  arg[%d]: found string literal '%s'", i, v.Literal)
+			log.DEBUG("  arg[%d]: found string literal '%s'", i, v.Literal)
 			vals = append(vals, v.Literal)
 
 		case Reference:
-			DEBUG("  arg[%d]: trying to resolve reference $.%s", i, v.Reference)
+			log.DEBUG("  arg[%d]: trying to resolve reference $.%s", i, v.Reference)
 			s, err := v.Reference.Resolve(ev.Tree)
 			if err != nil {
-				DEBUG("     [%d]: resolution failed\n    error: %s", i, err)
-				return nil, fmt.Errorf("Unable to resolve `%s`: %s", v.Reference, err)
+				log.DEBUG("     [%d]: resolution failed\n    error: %s", i, err)
+				return nil, fmt.Errorf("unable to resolve `%s`: %s", v.Reference, err)
 			}
 
-			switch s.(type) {
+			switch s := s.(type) {
 			case []interface{}:
-				for _, thing := range s.([]interface{}) {
-					vals = append(vals, thing)
-				}
+				vals = append(vals, s...)
 
 			case map[interface{}]interface{}:
-				DEBUG("     [%d]: resolved to a map; error!", i)
+				log.DEBUG("     [%d]: resolved to a map; error!", i)
 				return nil, fmt.Errorf("shuffle only accepts arrays and string values")
 
 			default:
-				vals = append(vals, s.(interface{}))
+				vals = append(vals, s)
 			}
 
 		default:
-			DEBUG("  arg[%d]: I don't know what to do with '%v'", i, arg)
+			log.DEBUG("  arg[%d]: I don't know what to do with '%v'", i, arg)
 			return nil, fmt.Errorf("shuffle operator only accepts key reference arguments")
 		}
-		DEBUG("")
+		log.DEBUG("")
 	}
 
 	return &Response{

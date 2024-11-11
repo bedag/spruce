@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	. "github.com/geofffranks/spruce/log"
+	log "github.com/geofffranks/spruce/log"
 	"github.com/starkandwayne/goutils/ansi"
 	"github.com/starkandwayne/goutils/tree"
 )
@@ -44,9 +44,7 @@ func (StaticIPOperator) Dependencies(ev *Evaluator, _ []*Expr, _ []*tree.Cursor,
 		if err != nil {
 			return
 		}
-		for _, alt := range keys {
-			l = append(l, alt)
-		}
+		l = append(l, keys...)
 	}
 
 	// top level stuff
@@ -270,102 +268,100 @@ func incrementIP(ip net.IP, i int) net.IP {
 
 // Run ...
 func (s StaticIPOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
-	DEBUG("running (( static_ips ... )) operation at $.%s", ev.Here)
-	defer DEBUG("done with (( static_ips ... )) operation at $%s\n", ev.Here)
+	log.DEBUG("running (( static_ips ... )) operation at $.%s", ev.Here)
+	defer log.DEBUG("done with (( static_ips ... )) operation at $%s\n", ev.Here)
 
 	var ips []interface{}
 
 	// detect what job we are in
-	DEBUG("  determining what job context (( static_ips ... )) was called in")
+	log.DEBUG("  determining what job context (( static_ips ... )) was called in")
 	job, err := currentJob(ev)
 	if err != nil {
-		DEBUG("  failed: %s\n", err)
+		log.DEBUG("  failed: %s\n", err)
 		return nil, err
 	}
-	DEBUG("  got it.  $.%s\n", job)
+	log.DEBUG("  got it.  $.%s\n", job)
 
 	job.Push("name")
-	DEBUG("  extracting job name from $.%s", job)
+	log.DEBUG("  extracting job name from $.%s", job)
 	jobname, err := job.Resolve(ev.Tree)
 	if err != nil {
-		DEBUG("  job has no name.  this could be problematic.\n")
+		log.DEBUG("  job has no name.  this could be problematic.\n")
 		return nil, err
 	}
 	job.Pop()
-	DEBUG("  got it.  job is %s\n", jobname)
+	log.DEBUG("  got it.  job is %s\n", jobname)
 
 	job.Push("azs")
-	DEBUG("  extracting azs from $.%s", job)
+	log.DEBUG("  extracting azs from $.%s", job)
 	var azs []string
 	if zs, err := job.Resolve(ev.Tree); err == nil {
 		if _, ok := zs.([]interface{}); ok {
 			for _, z := range zs.([]interface{}) {
 				if _, ok := z.(string); !ok {
-					DEBUG("  azs %v: '%v' is not a string literal\n", zs, z)
+					log.DEBUG("  azs %v: '%v' is not a string literal\n", zs, z)
 					return nil, ansi.Errorf("@R{azs} @c{%#v} @R{must be a list of strings}", zs)
 				}
 				azs = append(azs, z.(string))
 			}
 		} else {
-			DEBUG("  azs must be a list of strings\n")
+			log.DEBUG("  azs must be a list of strings\n")
 			return nil, ansi.Errorf("@R{azs} @c{%#v} @R{must be a list of strings}", zs)
 		}
 	}
 	job.Pop()
-	DEBUG("  got it.  azs are %v\n", azs)
+	log.DEBUG("  got it.  azs are %v\n", azs)
 
 	// determine if we have any instances
-	DEBUG("  determining how many instances of job %s there are", jobname)
+	log.DEBUG("  determining how many instances of job %s there are", jobname)
 	inst, err := instances(ev, job)
 	if err != nil {
-		DEBUG("  failed: %s\n", err)
+		log.DEBUG("  failed: %s\n", err)
 		return nil, err
 	}
 	if inst == 0 {
-		DEBUG("  no instances for this job.  skipping static IP address calculations...\n")
+		log.DEBUG("  no instances for this job.  skipping static IP address calculations...\n")
 		return &Response{
 			Type:  Replace,
 			Value: ips,
 		}, nil
 	}
-	DEBUG("  got it.  there are %d instances of %s\n", inst, jobname)
+	log.DEBUG("  got it.  there are %d instances of %s\n", inst, jobname)
 
 	// check to make sure instances matches requested number of static ips
-	DEBUG("  checking to see if the caller asked for enough static_ips to provision all job instances (need at least %d)", inst)
+	log.DEBUG("  checking to see if the caller asked for enough static_ips to provision all job instances (need at least %d)", inst)
 	if len(args) < inst {
-		DEBUG("  oops.  you asked for %d IPs for a job with %d instances\n", len(args), inst)
+		log.DEBUG("  oops.  you asked for %d IPs for a job with %d instances\n", len(args), inst)
 		return nil, ansi.Errorf("@R{not enough static IPs requested for} @c{job of %d instances} @R{(only asked for} @c{%d}@R{)}", inst, len(args))
 	}
-	DEBUG("  looks good.  asking for %d IPs for a job with %d instances\n", len(args), inst)
+	log.DEBUG("  looks good.  asking for %d IPs for a job with %d instances\n", len(args), inst)
 
 	// find our network
-	DEBUG("  determining the pool of static IPs from which to provision")
+	log.DEBUG("  determining the pool of static IPs from which to provision")
 	pools, poolAZs, err := statics(ev)
-	DEBUG("  static IP pools: %v", pools)
-	DEBUG("  static IP pool AZs: %v", poolAZs)
+	log.DEBUG("  static IP pools: %v", pools)
+	log.DEBUG("  static IP pool AZs: %v", poolAZs)
 	if err != nil {
-		DEBUG("  failed: %s\n", err)
+		log.DEBUG("  failed: %s\n", err)
 		return nil, err
 	}
 	count := 0
 	for _, pool := range pools {
 		count += len(pool)
 	}
-	DEBUG("  found %d addresses in the pool\n", count)
+	log.DEBUG("  found %d addresses in the pool\n", count)
 
 	// verify that pools contain all specified AZs, just like BOSH
 	for _, az := range azs {
 		if _, ok := pools[az]; !ok {
-			DEBUG("  could not find AZ %s in network AZS: %v\n", az, azs)
+			log.DEBUG("  could not find AZ %s in network AZS: %v\n", az, azs)
 			return nil, ansi.Errorf("@R{could not find AZ} @c{%s} (@R{in network AZS} @c{%v})", az, azs)
 		}
 	}
 
 	// if no AZs are specified on instance_groups, then just use whatever is in networks / pools
 	if len(azs) == 0 {
-		for _, az := range poolAZs {
-			azs = append(azs, az)
-		}
+		azs = append(azs, poolAZs...)
 	}
 
 	ord := func(n int64) string {
@@ -390,8 +386,8 @@ func (s StaticIPOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
 
 		v, err := arg.Resolve(ev.Tree)
 		if err != nil {
-			DEBUG("  arg[%d]: failed to resolve expression to a concrete value", i)
-			DEBUG("     [%d]: error was: %s", i, err)
+			log.DEBUG("  arg[%d]: failed to resolve expression to a concrete value", i)
+			log.DEBUG("     [%d]: error was: %s", i, err)
 			return nil, err
 		}
 
@@ -404,7 +400,7 @@ func (s StaticIPOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
 		if !ok {
 			offset, ok = v.Literal.(int64)
 			if !ok {
-				DEBUG("  arg[%d]: '%v' is not a number literal\n", i, arg)
+				log.DEBUG("  arg[%d]: '%v' is not a number literal\n", i, arg)
 				return nil, fmt.Errorf("static_ips operator arguments must have format <az>:<number> or <number>")
 			}
 		} else {
@@ -416,7 +412,7 @@ func (s StaticIPOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
 			}
 			offset, err = strconv.ParseInt(a, 10, 64)
 			if err != nil {
-				DEBUG("  arg[%d]: '%v' is not a number literal\n", i, arg)
+				log.DEBUG("  arg[%d]: '%v' is not a number literal\n", i, arg)
 				return nil, fmt.Errorf("static_ips operator arguments must have format <az>:<number> or <number>")
 			}
 		}
@@ -433,42 +429,42 @@ func (s StaticIPOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
 				}
 			}
 			if !found {
-				DEBUG("  specified az %s is not in instance_groups azs %v\n", az, azs)
+				log.DEBUG("  specified az %s is not in instance_groups azs %v\n", az, azs)
 				return nil, ansi.Errorf("@R{could not find AZ} @c{%s} @R{in instance_groups AZS} @c{%v}", az, azs)
 			}
 
 			pool, ok = pools[az]
 			if !ok {
-				DEBUG("  could not find pool: %s\n", az)
+				log.DEBUG("  could not find pool: %s\n", az)
 				return nil, ansi.Errorf("@R{could not find AZ} @c{%s} @R{in IP pool}", az)
 			}
 		}
 
 		if offset < 0 {
-			DEBUG("  arg[%d]: '%d' is not a positive number\n", i, offset)
+			log.DEBUG("  arg[%d]: '%d' is not a positive number\n", i, offset)
 			return nil, fmt.Errorf("static_ips operator only accepts literal non-negative numbers for arguments")
 		}
 
-		DEBUG("  arg[%d]: asking for the %d%s IP from the static address pool", i, offset, ord(offset))
+		log.DEBUG("  arg[%d]: asking for the %d%s IP from the static address pool", i, offset, ord(offset))
 		if offset >= int64(len(pool)) {
-			DEBUG("     [%d]: pool only has %d addresses; offset %d is out of bounds\n", i, len(pool), offset)
+			log.DEBUG("     [%d]: pool only has %d addresses; offset %d is out of bounds\n", i, len(pool), offset)
 			return nil, ansi.Errorf("@R{request for} @c{static_ip(%d)} @R{in a pool of only} @c{%d (zero-indexed)} @R{static addresses}", offset, len(pool))
 		}
 
 		// check to see if the address is already claimed
 		ip := pool[offset]
-		DEBUG("     [%d]: checking to see if %s is already claimed", i, ip)
+		log.DEBUG("     [%d]: checking to see if %s is already claimed", i, ip)
 		if thief, taken := UsedIPs[ip]; taken {
-			DEBUG("     [%d]: %s is in use by %s\n", i, ip, thief)
+			log.DEBUG("     [%d]: %s is in use by %s\n", i, ip, thief)
 			return nil, ansi.Errorf("@R{tried to use IP '}@c{%s}@R{', but that address is already allocated to} @c{%s}", ip, thief)
 		}
 
 		// claim this address for ourselves
-		DEBUG("     [%d]: claiming %s for job %s", i, ip, current)
+		log.DEBUG("     [%d]: claiming %s for job %s", i, ip, current)
 		UsedIPs[ip] = current
 		ips = append(ips, ip)
 
-		DEBUG("")
+		log.DEBUG("")
 	}
 
 	return &Response{

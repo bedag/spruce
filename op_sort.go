@@ -6,21 +6,11 @@ import (
 	"sort"
 	"strings"
 
-	. "github.com/geofffranks/spruce/log"
+	log "github.com/geofffranks/spruce/log"
 	"github.com/starkandwayne/goutils/tree"
 )
 
 var pathsToSort = map[string]string{}
-
-type itemType int
-
-const (
-	stringItems itemType = iota
-	floatItems
-	intItems
-	mapItems
-	otherItems
-)
 
 // SortOperator ...
 type SortOperator struct{}
@@ -56,7 +46,7 @@ func addToSortListIfNecessary(operator string, path string) {
 			byKey = opcall.args[1].String()
 		}
 
-		DEBUG("adding sort by '%s' of path '%s' to the list of paths to sort", byKey, path)
+		log.DEBUG("adding sort by '%s' of path '%s' to the list of paths to sort", byKey, path)
 		if _, ok := pathsToSort[path]; !ok {
 			pathsToSort[path] = byKey
 		}
@@ -125,8 +115,8 @@ func sortList(path string, list []interface{}, key string) error {
 		case reflect.Slice.String():
 			return tree.TypeMismatchError{
 				Path:   []string{path},
-				Wanted: fmt.Sprintf("a list with maps, strings or numbers"),
-				Got:    fmt.Sprintf("a list with list entries"),
+				Wanted: "a list with maps, strings or numbers",
+				Got:    "a list with list entries",
 			}
 		}
 	}

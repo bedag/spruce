@@ -9,7 +9,7 @@ import (
 
 	"github.com/starkandwayne/goutils/ansi"
 
-	. "github.com/geofffranks/spruce/log"
+	log "github.com/geofffranks/spruce/log"
 	"github.com/starkandwayne/goutils/tree"
 )
 
@@ -23,8 +23,6 @@ type Evaluator struct {
 	CheckOps []*Opcall
 
 	Only []string
-
-	pointer *interface{}
 }
 
 func nameOfObj(o interface{}, def string) string {
@@ -72,8 +70,8 @@ func (ev *Evaluator) DataFlow(phase OperatorPhase) ([]*Opcall, error) {
 					op.canonical = op.where
 				}
 				all[op.canonical.String()] = op
-				TRACE("found an operation at %s: %s", op.where.String(), op.src)
-				TRACE("        (canonical at %s)", op.canonical.String())
+				log.TRACE("found an operation at %s: %s", op.where.String(), op.src)
+				log.TRACE("        (canonical at %s)", op.canonical.String())
 				locs = append(locs, op.canonical)
 			}
 		} else {
@@ -82,16 +80,16 @@ func (ev *Evaluator) DataFlow(phase OperatorPhase) ([]*Opcall, error) {
 	}
 
 	scan = func(o interface{}) {
-		switch o.(type) {
+		switch o := o.(type) {
 		case map[interface{}]interface{}:
-			for k, v := range o.(map[interface{}]interface{}) {
+			for k, v := range o {
 				ev.Here.Push(fmt.Sprintf("%v", k))
 				check(v)
 				ev.Here.Pop()
 			}
 
 		case []interface{}:
-			for i, v := range o.([]interface{}) {
+			for i, v := range o {
 				name := nameOfObj(v, fmt.Sprintf("%d", i))
 				op, _ := ParseOpcall(phase, name)
 				if op == nil {
@@ -186,7 +184,7 @@ func (ev *Evaluator) DataFlow(phase OperatorPhase) ([]*Opcall, error) {
 				}
 				for _, op := range *out {
 					if candidate[1] == op[0] {
-						TRACE("data flow - adding [%s: %s, %s: %s] to data flow set (it matched {%s})",
+						log.TRACE("data flow - adding [%s: %s, %s: %s] to data flow set (it matched {%s})",
 							candidate[0].canonical, candidate[0].src,
 							candidate[1].canonical, candidate[1].src,
 							op[0].canonical)
@@ -214,7 +212,7 @@ func (ev *Evaluator) DataFlow(phase OperatorPhase) ([]*Opcall, error) {
 					if pick.Contains(op[1].canonical) {
 						final = append(final, op)
 						ops[i] = nil
-						TRACE("data flow - adding [%s: %s, %s: %s] to data flow set (it matched --cherry-pick %s)",
+						log.TRACE("data flow - adding [%s: %s, %s: %s] to data flow set (it matched --cherry-pick %s)",
 							op[0].canonical, op[0].src,
 							op[1].canonical, op[1].src,
 							pick)
@@ -262,7 +260,7 @@ func (ev *Evaluator) DataFlow(phase OperatorPhase) ([]*Opcall, error) {
 	}
 
 	for i, node := range g {
-		TRACE("data flow -- g[%d] is { %s:%s, %s:%s }\n", i, node[0].where, node[0].src, node[1].where, node[1].src)
+		log.TRACE("data flow -- g[%d] is { %s:%s, %s:%s }\n", i, node[0].where, node[0].src, node[1].where, node[1].src)
 	}
 
 	// construct a sorted list of keys in $all, so that we
@@ -321,7 +319,7 @@ func (ev *Evaluator) DataFlow(phase OperatorPhase) ([]*Opcall, error) {
 		}
 
 		for _, node := range free {
-			TRACE("data flow: [%d] wave %d, op %s: %s", len(ops), wave, node.where, node.src)
+			log.TRACE("data flow: [%d] wave %d, op %s: %s", len(ops), wave, node.where, node.src)
 			ops = append(ops, node)
 			g = remove(g, node)
 		}
@@ -335,7 +333,7 @@ func (ev *Evaluator) DataFlow(phase OperatorPhase) ([]*Opcall, error) {
 
 // RunOps ...
 func (ev *Evaluator) RunOps(ops []*Opcall) error {
-	DEBUG("patching up YAML by evaluating outstanding operators\n")
+	log.DEBUG("patching up YAML by evaluating outstanding operators\n")
 
 	errors := MultiError{Errors: []error{}}
 	for _, op := range ops {
@@ -353,7 +351,7 @@ func (ev *Evaluator) RunOps(ops []*Opcall) error {
 
 // Prune ...
 func (ev *Evaluator) Prune(paths []string) error {
-	DEBUG("pruning %d paths from the final YAML structure", len(paths))
+	log.DEBUG("pruning %d paths from the final YAML structure", len(paths))
 	for _, path := range paths {
 		c, err := tree.ParseCursor(path)
 		if err != nil {
@@ -368,46 +366,42 @@ func (ev *Evaluator) Prune(paths []string) error {
 			continue
 		}
 
-		switch o.(type) {
+		switch o := o.(type) {
 		case map[interface{}]interface{}:
-			if _, ok := o.(map[interface{}]interface{}); ok {
-				DEBUG("  pruning %s", path)
-				delete(o.(map[interface{}]interface{}), key)
-			}
+			log.DEBUG("  pruning %s", path)
+			delete(o, key)
 
 		case []interface{}:
-			if list, ok := o.([]interface{}); ok {
-				if idx, err := strconv.Atoi(key); err == nil {
-					parent.Pop()
-					if s, err := parent.Resolve(ev.Tree); err == nil {
-						if reflect.TypeOf(s).Kind() == reflect.Map {
-							parentName := fmt.Sprintf("%s", c.Component(-2))
-							DEBUG("  pruning index %d of array '%s'", idx, parentName)
+			if idx, err := strconv.Atoi(key); err == nil {
+				parent.Pop()
+				if s, err := parent.Resolve(ev.Tree); err == nil {
+					if reflect.TypeOf(s).Kind() == reflect.Map {
+						parentName := fmt.Sprint(c.Component(-2))
+						log.DEBUG("  pruning index %d of array '%s'", idx, parentName)
 
-							length := len(list) - 1
-							replacement := make([]interface{}, length)
-							copy(replacement, append(list[:idx], list[idx+1:]...))
+						length := len(o) - 1
+						replacement := make([]interface{}, length)
+						copy(replacement, append(o[:idx], o[idx+1:]...))
 
-							delete(s.(map[interface{}]interface{}), parentName)
-							s.(map[interface{}]interface{})[parentName] = replacement
-						}
+						delete(s.(map[interface{}]interface{}), parentName)
+						s.(map[interface{}]interface{})[parentName] = replacement
 					}
 				}
 			}
 
 		default:
-			DEBUG("  I don't know how to prune %s\n    value=%v\n", path, o)
+			log.DEBUG("  I don't know how to prune %s\n    value=%v\n", path, o)
 		}
 	}
-	DEBUG("")
+	log.DEBUG("")
 	return nil
 }
 
 // SortPaths sorts all paths (keys in map) using the provided sort-key (respective value)
 func (ev *Evaluator) SortPaths(pathKeyMap map[string]string) error {
-	DEBUG("sorting %d paths in the final YAML structure", len(pathKeyMap))
+	log.DEBUG("sorting %d paths in the final YAML structure", len(pathKeyMap))
 	for path, sortBy := range pathKeyMap {
-		DEBUG("  sorting path %s (sort-key %s)", path, sortBy)
+		log.DEBUG("  sorting path %s (sort-key %s)", path, sortBy)
 
 		cursor, err := tree.ParseCursor(path)
 		if err != nil {
@@ -443,13 +437,13 @@ func (ev *Evaluator) SortPaths(pathKeyMap map[string]string) error {
 		}
 	}
 
-	DEBUG("")
+	log.DEBUG("")
 	return nil
 }
 
 // Cherry-pick ...
 func (ev *Evaluator) CherryPick(paths []string) error {
-	DEBUG("cherry-picking %d paths from the final YAML structure", len(paths))
+	log.DEBUG("cherry-picking %d paths from the final YAML structure", len(paths))
 
 	if len(paths) > 0 {
 		// This will serve as the replacement tree ...
@@ -492,7 +486,7 @@ func (ev *Evaluator) CherryPick(paths []string) error {
 					tmp[cherryName] = cherryValue
 
 					// ... and add it to the replacement map
-					DEBUG("Merging '%s' into the replacement tree", path)
+					log.DEBUG("Merging '%s' into the replacement tree", path)
 					merger := &Merger{AppendByDefault: true}
 					merged := merger.mergeObj(tmp, replacement, path)
 					if err := merger.Error(); err != nil {
@@ -516,7 +510,7 @@ func (ev *Evaluator) CherryPick(paths []string) error {
 							cherryValue = tmp
 
 						case []interface{}:
-							tmp := make([]interface{}, 0, 0)
+							tmp := make([]interface{}, 0)
 							tmp = append(tmp, cherryValue)
 
 							cherryName = parent.Nodes[len(parent.Nodes)-1]
@@ -537,13 +531,13 @@ func (ev *Evaluator) CherryPick(paths []string) error {
 		ev.Tree = replacement
 	}
 
-	DEBUG("")
+	log.DEBUG("")
 	return nil
 }
 
 // CheckForCycles ...
 func (ev *Evaluator) CheckForCycles(maxDepth int) error {
-	DEBUG("checking for cycles in final YAML structure")
+	log.DEBUG("checking for cycles in final YAML structure")
 
 	var check func(o interface{}, depth int) error
 	check = func(o interface{}, depth int) error {
@@ -551,16 +545,16 @@ func (ev *Evaluator) CheckForCycles(maxDepth int) error {
 			return ansi.Errorf("@*{Hit max recursion depth. You seem to have a self-referencing dataset}")
 		}
 
-		switch o.(type) {
+		switch o := o.(type) {
 		case []interface{}:
-			for _, v := range o.([]interface{}) {
+			for _, v := range o {
 				if err := check(v, depth-1); err != nil {
 					return err
 				}
 			}
 
 		case map[interface{}]interface{}:
-			for _, v := range o.(map[interface{}]interface{}) {
+			for _, v := range o {
 				if err := check(v, depth-1); err != nil {
 					return err
 				}
@@ -572,11 +566,11 @@ func (ev *Evaluator) CheckForCycles(maxDepth int) error {
 
 	err := check(ev.Tree, maxDepth)
 	if err != nil {
-		DEBUG("error: %s\n", err)
+		log.DEBUG("error: %s\n", err)
 		return err
 	}
 
-	DEBUG("no cycles detected.\n")
+	log.DEBUG("no cycles detected.\n")
 	return nil
 }
 
@@ -590,27 +584,27 @@ func (ev *Evaluator) RunOp(op *Opcall) error {
 
 	switch resp.Type {
 	case Replace:
-		DEBUG("executing a Replace instruction on %s", op.where)
+		log.DEBUG("executing a Replace instruction on %s", op.where)
 		key := op.where.Component(-1)
 		parent := op.where.Copy()
 		parent.Pop()
 
 		o, err := parent.Resolve(ev.Tree)
 		if err != nil {
-			DEBUG("  error: %s\n  continuing\n", err)
+			log.DEBUG("  error: %s\n  continuing\n", err)
 			return err
 		}
-		switch o.(type) {
+		switch o := o.(type) {
 		case []interface{}:
 			i, err := strconv.ParseUint(key, 10, 0)
 			if err != nil {
-				DEBUG("  error: %s\n  continuing\n", err)
+				log.DEBUG("  error: %s\n  continuing\n", err)
 				return err
 			}
-			o.([]interface{})[i] = resp.Value
+			o[i] = resp.Value
 
 		case map[interface{}]interface{}:
-			o.(map[interface{}]interface{})[key] = resp.Value
+			o[key] = resp.Value
 
 		default:
 			err := tree.TypeMismatchError{
@@ -618,20 +612,20 @@ func (ev *Evaluator) RunOp(op *Opcall) error {
 				Wanted: "a map or a list",
 				Got:    "a scalar",
 			}
-			DEBUG("  error: %s\n  continuing\n", err)
+			log.DEBUG("  error: %s\n  continuing\n", err)
 			return err
 		}
-		DEBUG("")
+		log.DEBUG("")
 
 	case Inject:
-		DEBUG("executing an Inject instruction on %s", op.where)
+		log.DEBUG("executing an Inject instruction on %s", op.where)
 		key := op.where.Component(-1)
 		parent := op.where.Copy()
 		parent.Pop()
 
 		o, err := parent.Resolve(ev.Tree)
 		if err != nil {
-			DEBUG("  error: %s\n  continuing\n", err)
+			log.DEBUG("  error: %s\n  continuing\n", err)
 			return err
 		}
 
@@ -642,10 +636,10 @@ func (ev *Evaluator) RunOp(op *Opcall) error {
 			path := fmt.Sprintf("%s.%s", parent, k)
 			_, set := m[k]
 			if !set {
-				DEBUG("  %s is not set, using the injected value", path)
+				log.DEBUG("  %s is not set, using the injected value", path)
 				m[k] = v
 			} else {
-				DEBUG("  %s is set, merging the injected value", path)
+				log.DEBUG("  %s is set, merging the injected value", path)
 				merger := &Merger{AppendByDefault: true}
 				merged := merger.mergeObj(v, m[k], path)
 				if err := merger.Error(); err != nil {
@@ -679,7 +673,7 @@ func (ev *Evaluator) Run(prune []string, picks []string) error {
 	paramErrs := MultiError{Errors: []error{}}
 
 	if os.Getenv("REDACT") != "" {
-		DEBUG("Setting vault & aws operators to redact keys")
+		log.DEBUG("Setting vault & aws operators to redact keys")
 		SkipVault = true
 		SkipAws = true
 	}

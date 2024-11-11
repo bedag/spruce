@@ -5,11 +5,12 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/geofffranks/yaml"
 	"github.com/starkandwayne/goutils/ansi"
 
-	. "github.com/geofffranks/spruce/log"
+	log "github.com/geofffranks/spruce/log"
 	"github.com/starkandwayne/goutils/tree"
 )
 
@@ -213,15 +214,15 @@ func (e *Expr) Resolve(tree map[interface{}]interface{}) (*Expr, error) {
 }
 
 func ResolveEnv(nodes []string) []string {
-    var resolved []string
-    for _, node := range nodes {
-        if len(node) > 0 && node[0] == '$' {
-            resolved = append(resolved, os.Getenv(node[1:]))
-        } else {
-            resolved = append(resolved, node)
-        }
-    }
-    return resolved
+	var resolved []string
+	for _, node := range nodes {
+		if len(node) > 0 && node[0] == '$' {
+			resolved = append(resolved, os.Getenv(node[1:]))
+		} else {
+			resolved = append(resolved, node)
+		}
+	}
+	return resolved
 }
 
 // Evaluate ...
@@ -278,6 +279,23 @@ func (e *Expr) Dependencies(ev *Evaluator, locs []*tree.Cursor) []*tree.Cursor {
 	return l
 }
 
+func matchPattern(s string) bool {
+	// Trim leading and trailing spaces
+	trimmed := strings.TrimSpace(s)
+
+	// Check if the string starts with "(("
+	if !strings.HasPrefix(trimmed, "((") {
+		return false
+	}
+
+	// Check if the string ends with "))"
+	if !strings.HasSuffix(trimmed, "))") {
+		return false
+	}
+
+	return true
+}
+
 // Opcall ...
 type Opcall struct {
 	src       string
@@ -290,7 +308,7 @@ type Opcall struct {
 // ParseOpcall ...
 func ParseOpcall(phase OperatorPhase, src string) (*Opcall, error) {
 	split := func(src string) []string {
-		list := make([]string, 0, 0)
+		list := make([]string, 0)
 
 		buf := ""
 		escaped := false
@@ -366,9 +384,9 @@ func ParseOpcall(phase OperatorPhase, src string) (*Opcall, error) {
 		}
 
 		push := func(e *Expr) {
-			TRACE("expr: pushing data expression `%s' onto stack", e)
-			TRACE("expr:   start: left=`%s', op=`%s'", left, op)
-			defer func() { TRACE("expr:     end: left=`%s', op=`%s'\n", left, op) }()
+			log.TRACE("expr: pushing data expression `%s' onto stack", e)
+			log.TRACE("expr:   start: left=`%s', op=`%s'", left, op)
+			defer func() { log.TRACE("expr:     end: left=`%s', op=`%s'\n", left, op) }()
 
 			if left == nil {
 				left = e
@@ -385,39 +403,39 @@ func ParseOpcall(phase OperatorPhase, src string) (*Opcall, error) {
 			op = nil
 		}
 
-		TRACE("expr: parsing `%s'", src)
+		log.TRACE("expr: parsing `%s'", src)
 		for i, arg := range split(src) {
 			switch {
 			case arg == ",":
-				DEBUG("  #%d: literal comma found; treating what we've seen so far as a complete expression", i)
+				log.DEBUG("  #%d: literal comma found; treating what we've seen so far as a complete expression", i)
 				pop()
 
 			case envvar.MatchString(arg):
-				DEBUG("  #%d: parsed as unquoted environment variable reference '%s'", i, arg)
+				log.DEBUG("  #%d: parsed as unquoted environment variable reference '%s'", i, arg)
 				push(&Expr{Type: EnvVar, Name: arg[1:]})
 
 			case qstring.MatchString(arg):
 				m := qstring.FindStringSubmatch(arg)
-				DEBUG("  #%d: parsed as quoted string literal '%s'", i, m[1])
+				log.DEBUG("  #%d: parsed as quoted string literal '%s'", i, m[1])
 				push(&Expr{Type: Literal, Literal: m[1]})
 
 			case float.MatchString(arg):
-				DEBUG("  #%d: parsed as unquoted floating point literal '%s'", i, arg)
+				log.DEBUG("  #%d: parsed as unquoted floating point literal '%s'", i, arg)
 				v, err := strconv.ParseFloat(arg, 64)
 				if err != nil {
-					DEBUG("  #%d: %s is not parsable as a floating point number: %s", i, arg, err)
+					log.DEBUG("  #%d: %s is not parsable as a floating point number: %s", i, arg, err)
 					return args, err
 				}
 				push(&Expr{Type: Literal, Literal: v})
 
 			case integer.MatchString(arg):
-				DEBUG("  #%d: parsed as unquoted integer literal '%s'", i, arg)
+				log.DEBUG("  #%d: parsed as unquoted integer literal '%s'", i, arg)
 				v, err := strconv.ParseInt(arg, 10, 64)
 				if err == nil {
 					push(&Expr{Type: Literal, Literal: v})
 					break
 				}
-				DEBUG("  #%d: %s is not parsable as an integer, falling back to parsing as float: %s", i, arg, err)
+				log.DEBUG("  #%d: %s is not parsable as an integer, falling back to parsing as float: %s", i, arg, err)
 				f, err := strconv.ParseFloat(arg, 64)
 				push(&Expr{Type: Literal, Literal: f})
 				if err != nil {
@@ -425,33 +443,33 @@ func ParseOpcall(phase OperatorPhase, src string) (*Opcall, error) {
 				}
 
 			case arg == "||":
-				DEBUG("  #%d: parsed logical-or operator, '||'", i)
+				log.DEBUG("  #%d: parsed logical-or operator, '||'", i)
 
 				if left == nil || op != nil {
 					return args, fmt.Errorf(`syntax error near: %s`, src)
 				}
-				TRACE("expr: pushing || expr-op onto the stack")
+				log.TRACE("expr: pushing || expr-op onto the stack")
 				op = &Expr{Type: LogicalOr}
 
 			case arg == "nil" || arg == "null" || arg == "~" || arg == "Nil" || arg == "Null" || arg == "NIL" || arg == "NULL":
-				DEBUG("  #%d: parsed the nil value token '%s'", i, arg)
+				log.DEBUG("  #%d: parsed the nil value token '%s'", i, arg)
 				push(&Expr{Type: Literal, Literal: nil})
 
 			case arg == "false" || arg == "False" || arg == "FALSE":
-				DEBUG("  #%d: parsed the false value token '%s'", i, arg)
+				log.DEBUG("  #%d: parsed the false value token '%s'", i, arg)
 				push(&Expr{Type: Literal, Literal: false})
 
 			case arg == "true" || arg == "True" || arg == "TRUE":
-				DEBUG("  #%d: parsed the true value token '%s'", i, arg)
+				log.DEBUG("  #%d: parsed the true value token '%s'", i, arg)
 				push(&Expr{Type: Literal, Literal: true})
 
 			default:
 				c, err := tree.ParseCursor(arg)
 				if err != nil {
-					DEBUG("  #%d: %s is a malformed reference: %s", i, arg, err)
+					log.DEBUG("  #%d: %s is a malformed reference: %s", i, arg, err)
 					return args, err
 				}
-				DEBUG("  #%d: parsed as a reference to $.%s", i, c)
+				log.DEBUG("  #%d: parsed as a reference to $.%s", i, c)
 				push(&Expr{Type: Reference, Reference: c})
 			}
 		}
@@ -459,10 +477,10 @@ func ParseOpcall(phase OperatorPhase, src string) (*Opcall, error) {
 		if left != nil || op != nil {
 			return nil, fmt.Errorf(`syntax error near: %s`, src)
 		}
-		DEBUG("")
+		log.DEBUG("")
 
 		for _, e := range final {
-			TRACE("expr: pushing expression `%v' onto the operand list", e)
+			log.TRACE("expr: pushing expression `%v' onto the operand list", e)
 			reduced, err := e.Reduce()
 			if err != nil {
 				if warning, isWarning := err.(WarningError); isWarning {
@@ -483,33 +501,35 @@ func ParseOpcall(phase OperatorPhase, src string) (*Opcall, error) {
 		`^\Q((\E\s*([a-zA-Z][a-zA-Z0-9_-]*)(?:\s*\((.*)\))?\s*\Q))\E$`, // (( op(x,y,z) ))
 		`^\Q((\E\s*([a-zA-Z][a-zA-Z0-9_-]*)(?:\s+(.*))?\s*\Q))\E$`,     // (( op x y z ))
 	} {
-		re := regexp.MustCompile(pattern)
-		if !re.MatchString(src) {
-			continue
-		}
+		if matchPattern(src) {
+			re := regexp.MustCompile(pattern)
+			if !re.MatchString(src) {
+				continue
+			}
 
-		m := re.FindStringSubmatch(src)
-		DEBUG("parsing `%s': looks like a (( %s ... )) operator\n arguments:", src, m[1])
+			m := re.FindStringSubmatch(src)
+			log.DEBUG("parsing `%s': looks like a (( %s ... )) operator\n arguments:", src, m[1])
 
-		op.op = OperatorFor(m[1])
-		if _, ok := op.op.(NullOperator); ok && len(m[2]) == 0 {
-			DEBUG("skipping `%s': not a real operator -- might be a BOSH variable?", src)
-			continue
-		}
-		if op.op.Phase() != phase {
-			DEBUG("  - skipping (( %s ... )) operation; it belongs to a different phase", m[1])
-			return nil, nil
-		}
+			op.op = OperatorFor(m[1])
+			if _, ok := op.op.(NullOperator); ok && len(m[2]) == 0 {
+				log.DEBUG("skipping `%s': not a real operator -- might be a BOSH variable?", src)
+				continue
+			}
+			if op.op.Phase() != phase {
+				log.DEBUG("  - skipping (( %s ... )) operation; it belongs to a different phase", m[1])
+				return nil, nil
+			}
 
-		args, err := argify(m[2])
-		if err != nil {
-			return nil, err
+			args, err := argify(m[2])
+			if err != nil {
+				return nil, err
+			}
+			if len(args) == 0 {
+				log.DEBUG("  (none)")
+			}
+			op.args = args
+			return op, nil
 		}
-		if len(args) == 0 {
-			DEBUG("  (none)")
-		}
-		op.args = args
-		return op, nil
 	}
 
 	return nil, nil
@@ -519,9 +539,7 @@ func ParseOpcall(phase OperatorPhase, src string) (*Opcall, error) {
 func (op *Opcall) Dependencies(ev *Evaluator, locs []*tree.Cursor) []*tree.Cursor {
 	l := []*tree.Cursor{}
 	for _, arg := range op.args {
-		for _, c := range arg.Dependencies(ev, locs) {
-			l = append(l, c)
-		}
+		l = append(l, arg.Dependencies(ev, locs)...)
 	}
 
 	return op.op.Dependencies(ev, op.args, locs, l)

@@ -3426,6 +3426,7 @@ meta:
 			So(r.Type, ShouldEqual, Replace)
 
 			content, err := os.ReadFile("assets/file_operator/sample.txt")
+			So(err, ShouldBeNil)
 			So(r.Value.(string), ShouldEqual, string(content))
 		})
 
@@ -3453,6 +3454,7 @@ meta:
 				So(r.Type, ShouldEqual, Replace)
 
 				content, err := os.ReadFile("/etc/hosts")
+				So(err, ShouldBeNil)
 				So(r.Value.(string), ShouldEqual, string(content))
 			})
 		}
@@ -3765,7 +3767,7 @@ math:
 	Convey("static_ips Operator", t, func() {
 		op := StaticIPOperator{}
 		Reset(func() {
-			UsedIPs = map[string]string{}
+			StaticIPOperator.Setup(op)
 		})
 
 		Convey("can resolve valid networks inside of job contexts", func() {
@@ -3785,6 +3787,7 @@ jobs:
 `),
 			}
 
+			op.Setup()
 			r, err := op.Run(ev, []*Expr{num(0), num(1), num(2)})
 			So(err, ShouldBeNil)
 			So(r, ShouldNotBeNil)
@@ -4950,7 +4953,7 @@ meta:
 			})
 
 			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldEqual, "Start index 100 exceeds size of subnet 192.168.1.16/29")
+			So(err.Error(), ShouldEqual, "start index 100 exceeds size of subnet 192.168.1.16/29")
 			So(r, ShouldBeNil)
 		})
 
@@ -4962,7 +4965,7 @@ meta:
 			})
 
 			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldEqual, "Start index 7 and count 3 would exceed size of subnet 192.168.1.16/29")
+			So(err.Error(), ShouldEqual, "start index 7 and count 3 would exceed size of subnet 192.168.1.16/29")
 			So(r, ShouldBeNil)
 		})
 	})

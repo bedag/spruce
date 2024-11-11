@@ -12,7 +12,7 @@ import (
 	"github.com/cloudfoundry-community/vaultkv"
 	"github.com/starkandwayne/goutils/ansi"
 
-	. "github.com/geofffranks/spruce/log"
+	log "github.com/geofffranks/spruce/log"
 	"github.com/starkandwayne/goutils/tree"
 
 	// Use geofffranks forks to persist the fix in https://github.com/go-yaml/yaml/pull/133/commits
@@ -91,7 +91,7 @@ func initializeVaultClient() error {
 	}
 
 	if addr == "" || token == "" {
-		return fmt.Errorf("Failed to determine Vault URL / token, and the $REDACT environment variable is not set.")
+		return fmt.Errorf("failed to determine Vault URL / token, and the $REDACT environment variable is not set")
 	}
 
 	roots, err := x509.SystemCertPool()
@@ -101,7 +101,7 @@ func initializeVaultClient() error {
 
 	parsedURL, err := url.Parse(addr)
 	if err != nil {
-		return fmt.Errorf("Could not parse Vault URL `%s': %s", addr, err)
+		return fmt.Errorf("could not parse Vault URL `%s': %s", addr, err)
 	}
 
 	if parsedURL.Port() == "" {
@@ -134,12 +134,8 @@ func initializeVaultClient() error {
 			},
 		},
 	}
-	if DebugOn {
+	if log.DebugOn {
 		client.Trace = os.Stderr
-	}
-
-	if err != nil {
-		return fmt.Errorf("Error setting up Vault client: %s", err)
 	}
 
 	kv = client.NewKV()
@@ -151,8 +147,8 @@ func initializeVaultClient() error {
 // interacting with the (unsealed) Vault instance to retrieve the
 // given secrets.
 func (VaultOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
-	DEBUG("running (( vault ... )) operation at $.%s", ev.Here)
-	defer DEBUG("done with (( vault ... )) operation at $.%s\n", ev.Here)
+	log.DEBUG("running (( vault ... )) operation at $.%s", ev.Here)
+	defer log.DEBUG("done with (( vault ... )) operation at $.%s\n", ev.Here)
 
 	// syntax: (( vault "secret/path:key" ))
 	// syntax: (( vault path.object "to concat with" other.object ))
@@ -164,31 +160,31 @@ func (VaultOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
 	for i, arg := range args {
 		v, err := arg.Resolve(ev.Tree)
 		if err != nil {
-			DEBUG("  arg[%d]: failed to resolve expression to a concrete value", i)
-			DEBUG("     [%d]: error was: %s", i, err)
+			log.DEBUG("  arg[%d]: failed to resolve expression to a concrete value", i)
+			log.DEBUG("     [%d]: error was: %s", i, err)
 			return nil, err
 		}
 
 		switch v.Type {
 		case Literal:
-			DEBUG("  arg[%d]: using string literal '%v'", i, v.Literal)
+			log.DEBUG("  arg[%d]: using string literal '%v'", i, v.Literal)
 			l = append(l, fmt.Sprintf("%v", v.Literal))
 
 		case Reference:
-			DEBUG("  arg[%d]: trying to resolve reference $.%s", i, v.Reference)
+			log.DEBUG("  arg[%d]: trying to resolve reference $.%s", i, v.Reference)
 			s, err := v.Reference.Resolve(ev.Tree)
 			if err != nil {
-				DEBUG("     [%d]: resolution failed\n    error: %s", i, err)
-				return nil, fmt.Errorf("Unable to resolve `%s`: %s", v.Reference, err)
+				log.DEBUG("     [%d]: resolution failed\n    error: %s", i, err)
+				return nil, fmt.Errorf("unable to resolve `%s`: %s", v.Reference, err)
 			}
 
 			switch s.(type) {
 			case map[interface{}]interface{}:
-				DEBUG("  arg[%d]: %v is not a string scalar", i, s)
+				log.DEBUG("  arg[%d]: %v is not a string scalar", i, s)
 				return nil, ansi.Errorf("@R{tried to look up} @c{$.%s}@R{, which is not a string scalar}", v.Reference)
 
 			case []interface{}:
-				DEBUG("  arg[%d]: %v is not a string scalar", i, s)
+				log.DEBUG("  arg[%d]: %v is not a string scalar", i, s)
 				return nil, ansi.Errorf("@R{tried to look up} @c{$.%s}@R{, which is not a string scalar}", v.Reference)
 
 			default:
@@ -196,12 +192,12 @@ func (VaultOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
 			}
 
 		default:
-			DEBUG("  arg[%d]: I don't know what to do with '%v'", i, arg)
+			log.DEBUG("  arg[%d]: I don't know what to do with '%v'", i, arg)
 			return nil, fmt.Errorf("vault operator only accepts string literals and key reference arguments")
 		}
 	}
 	key := strings.Join(l, "")
-	DEBUG("     [0]: Using vault key '%s'\n", key)
+	log.DEBUG("     [0]: Using vault key '%s'\n", key)
 
 	//Append the location from which this operator was called to the list of
 	// places from which this key was referenced
@@ -237,9 +233,9 @@ func (VaultOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
 		var fullSecret map[string]interface{}
 		var found bool
 		if fullSecret, found = vaultSecretCache[leftPart]; found {
-			DEBUG("vault: Cache hit for `%s`", leftPart)
+			log.DEBUG("vault: Cache hit for `%s`", leftPart)
 		} else {
-			DEBUG("vault: Cache MISS for `%s`", leftPart)
+			log.DEBUG("vault: Cache MISS for `%s`", leftPart)
 			// Secret isn't cached. Grab it from the vault.
 			fullSecret, err = getVaultSecret(leftPart)
 			if err != nil {
@@ -275,31 +271,31 @@ func init() {
 func getVaultSecret(secret string) (map[string]interface{}, error) {
 	ret := map[string]interface{}{}
 
-	DEBUG("Fetching Vault secret at `%s'", secret)
+	log.DEBUG("Fetching Vault secret at `%s'", secret)
 	_, err := kv.Get(secret, &ret, nil)
 	if err != nil {
-		DEBUG(" failure.")
+		log.DEBUG(" failure.")
 		return nil, err
 	}
 
-	DEBUG("  success.")
+	log.DEBUG("  success.")
 	return ret, nil
 }
 
 func extractSubkey(secretMap map[string]interface{}, secret, subkey string) (string, error) {
-	DEBUG("  extracting the [%s] subkey from the secret", subkey)
+	log.DEBUG("  extracting the [%s] subkey from the secret", subkey)
 
 	secretSubkeyPath := fmt.Sprintf("%s:%s", secret, subkey)
 	v, ok := secretMap[subkey]
 	if !ok {
-		DEBUG("    !! %s not found!\n", secretSubkeyPath)
+		log.DEBUG("    !! %s not found!\n", secretSubkeyPath)
 		return "", ansi.Errorf("@R{secret} @c{%s} @R{not found}", secretSubkeyPath)
 	}
 	if _, ok := v.(string); !ok {
-		DEBUG("    !! %s is not a string!\n", secretSubkeyPath)
+		log.DEBUG("    !! %s is not a string!\n", secretSubkeyPath)
 		return "", ansi.Errorf("@R{secret} @c{%s} @R{is not a string}", secretSubkeyPath)
 	}
-	DEBUG(" success.")
+	log.DEBUG(" success.")
 	return v.(string), nil
 }
 

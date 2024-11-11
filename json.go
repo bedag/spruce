@@ -10,7 +10,7 @@ import (
 	"github.com/starkandwayne/goutils/ansi"
 
 	"github.com/geofffranks/simpleyaml"
-	. "github.com/geofffranks/spruce/log"
+	log "github.com/geofffranks/spruce/log"
 )
 
 func jsonifyData(data []byte, strict bool) (string, error) {
@@ -51,7 +51,7 @@ func JSONifyFiles(paths []string, strict bool) ([]string, error) {
 	for _, path := range paths {
 		data := []byte{}
 		if path == "-" {
-			DEBUG("Processing STDIN")
+			log.DEBUG("Processing STDIN")
 			stat, err := os.Stdin.Stat()
 			if err != nil {
 				return nil, ansi.Errorf("@R{Error statting STDIN} - Bailing out: %s\n", err.Error())
@@ -63,7 +63,7 @@ func JSONifyFiles(paths []string, strict bool) ([]string, error) {
 				}
 			}
 		} else {
-			DEBUG("Processing file '%s'", path)
+			log.DEBUG("Processing file '%s'", path)
 			data, err = os.ReadFile(path)
 			if err != nil {
 				return nil, ansi.Errorf("@R{Error reading file} @m{%s}: %s", path, err)
@@ -89,11 +89,11 @@ func JSONifyFiles(paths []string, strict bool) ([]string, error) {
 }
 
 func deinterface(o interface{}, strict bool) (interface{}, error) {
-	switch o.(type) {
+	switch o := o.(type) {
 	case map[interface{}]interface{}:
-		return deinterfaceMap(o.(map[interface{}]interface{}), strict)
+		return deinterfaceMap(o, strict)
 	case []interface{}:
-		return deinterfaceList(o.([]interface{}), strict)
+		return deinterfaceList(o, strict)
 	default:
 		return o, nil
 	}
@@ -126,7 +126,7 @@ func deinterfaceMap(o map[interface{}]interface{}, strict bool) (map[string]inte
 			}
 		default:
 			if strict {
-				return nil, fmt.Errorf("Non-string keys found during strict JSON conversion")
+				return nil, fmt.Errorf("non-string keys found during strict JSON conversion")
 			} else {
 				addKeyToMap(m, k, v, strict)
 			}

@@ -12,7 +12,7 @@ import (
 	"github.com/starkandwayne/goutils/ansi"
 	"github.com/starkandwayne/goutils/tree"
 
-	. "github.com/geofffranks/spruce/log"
+	log "github.com/geofffranks/spruce/log"
 )
 
 // CalcOperator is invoked with (( calc <expression> ))
@@ -30,7 +30,7 @@ func (CalcOperator) Phase() OperatorPhase {
 
 // Dependencies ...
 func (CalcOperator) Dependencies(ev *Evaluator, args []*Expr, _ []*tree.Cursor, _ []*tree.Cursor) []*tree.Cursor {
-	DEBUG("Calculating dependencies for (( calc ... ))")
+	log.DEBUG("Calculating dependencies for (( calc ... ))")
 	deps := []*tree.Cursor{}
 
 	// The dependency checks are straightforward on the happy path:
@@ -39,9 +39,7 @@ func (CalcOperator) Dependencies(ev *Evaluator, args []*Expr, _ []*tree.Cursor, 
 		switch args[0].Type {
 		case Literal:
 			if cursors, searchError := searchForCursors(args[0].Literal.(string)); searchError == nil {
-				for _, cursor := range cursors {
-					deps = append(deps, cursor)
-				}
+				deps = append(deps, cursors...)
 			}
 		}
 	}
@@ -51,8 +49,8 @@ func (CalcOperator) Dependencies(ev *Evaluator, args []*Expr, _ []*tree.Cursor, 
 
 // Run ...
 func (CalcOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
-	DEBUG("running (( calc ... )) operation at $.%s", ev.Here)
-	defer DEBUG("done with (( calc ... )) operation at $%s\n", ev.Here)
+	log.DEBUG("running (( calc ... )) operation at $.%s", ev.Here)
+	defer log.DEBUG("done with (( calc ... )) operation at $%s\n", ev.Here)
 
 	// The calc operator expects one literal argument containing the quoted expression to be evaluated
 	if len(args) != 1 {
@@ -62,14 +60,14 @@ func (CalcOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
 	switch args[0].Type {
 	case Literal:
 		// Replace all Spruce references with the respective value
-		DEBUG("  input expression: %s", args[0].Literal.(string))
+		log.DEBUG("  input expression: %s", args[0].Literal.(string))
 		input, replaceError := replaceReferences(ev, args[0].Literal.(string))
 		if replaceError != nil {
 			return nil, replaceError
 		}
 
 		// Once all Spruce references (variables) are replaced, try to read the expression
-		DEBUG("  processed expression: %s", input)
+		log.DEBUG("  processed expression: %s", input)
 		expression, expressionError := govaluate.NewEvaluableExpressionWithFunctions(input, supportedFunctions())
 		if expressionError != nil {
 			return nil, expressionError
@@ -93,7 +91,7 @@ func (CalcOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
 			}
 		}
 
-		DEBUG("  evaluated result: %v", result)
+		log.DEBUG("  evaluated result: %v", result)
 		return &Response{
 			Type:  Replace,
 			Value: result,
@@ -111,7 +109,7 @@ func searchForCursors(input string) ([]*tree.Cursor, error) {
 	// https://regex101.com/r/TIEyak/1 (to delete the URL use https://regex101.com/delete/fPbxosYXWzBPYaNdL5YcPpj3)
 	regexp := regexp.MustCompile(`(\w+|-)\.(\w+|-|\.)+`)
 	candidates := regexp.FindAllString(input, -1)
-	DEBUG("    strings found containing the path separator: %v", strings.Join(candidates, ", "))
+	log.DEBUG("    strings found containing the path separator: %v", strings.Join(candidates, ", "))
 
 	// If it is a path, it can be parsed (parse errors will be ignored)
 	for _, candidate := range candidates {
@@ -130,7 +128,7 @@ func searchForCursors(input string) ([]*tree.Cursor, error) {
 		}
 	}
 
-	DEBUG("    result cursors: %v", result)
+	log.DEBUG("    result cursors: %v", result)
 	return result, nil
 }
 
@@ -147,7 +145,7 @@ func replaceReferences(ev *Evaluator, input string) (string, error) {
 		}
 
 		path := cursor.String()
-		DEBUG("    path/value: %s=%v", path, value)
+		log.DEBUG("    path/value: %s=%v", path, value)
 
 		switch value.(type) {
 		case int, uint8, uint16, uint32, uint64, int8, int16, int32, int64:

@@ -15,7 +15,7 @@ import (
 
 	"github.com/starkandwayne/goutils/ansi"
 
-	. "github.com/geofffranks/spruce/log"
+	log "github.com/geofffranks/spruce/log"
 	"github.com/starkandwayne/goutils/tree"
 
 	// Use geofffranks forks to persist the fix in https://github.com/go-yaml/yaml/pull/133/commits
@@ -157,8 +157,8 @@ func (AwsOperator) Dependencies(_ *Evaluator, _ []*Expr, _ []*tree.Cursor, auto 
 // and extract the specified key (if provided).
 func (o AwsOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
 	var err error
-	DEBUG("running (( %s ... )) operation at $.%s", o.variant, ev.Here)
-	defer DEBUG("done with (( %s ... )) operation at $.%s\n", o.variant, ev.Here)
+	log.DEBUG("running (( %s ... )) operation at $.%s", o.variant, ev.Here)
+	defer log.DEBUG("done with (( %s ... )) operation at $.%s\n", o.variant, ev.Here)
 
 	if len(args) < 1 {
 		return nil, fmt.Errorf("%s operator requires at least one argument", o.variant)
@@ -168,31 +168,31 @@ func (o AwsOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
 	for i, arg := range args {
 		v, err := arg.Resolve(ev.Tree)
 		if err != nil {
-			DEBUG("  arg[%d]: failed to resolve expression to a concrete value", i)
-			DEBUG("     [%d]: error was: %s", i, err)
+			log.DEBUG("  arg[%d]: failed to resolve expression to a concrete value", i)
+			log.DEBUG("     [%d]: error was: %s", i, err)
 			return nil, err
 		}
 
 		switch v.Type {
 		case Literal:
-			DEBUG("  arg[%d]: using string literal '%v'", i, v.Literal)
+			log.DEBUG("  arg[%d]: using string literal '%v'", i, v.Literal)
 			l = append(l, fmt.Sprintf("%v", v.Literal))
 
 		case Reference:
-			DEBUG("  arg[%d]: trying to resolve reference $.%s", i, v.Reference)
+			log.DEBUG("  arg[%d]: trying to resolve reference $.%s", i, v.Reference)
 			s, err := v.Reference.Resolve(ev.Tree)
 			if err != nil {
-				DEBUG("     [%d]: resolution failed\n    error: %s", i, err)
-				return nil, fmt.Errorf("Unable to resolve `%s`: %s", v.Reference, err)
+				log.DEBUG("     [%d]: resolution failed\n    error: %s", i, err)
+				return nil, fmt.Errorf("unable to resolve `%s`: %s", v.Reference, err)
 			}
 
 			switch s.(type) {
 			case map[interface{}]interface{}:
-				DEBUG("  arg[%d]: %v is not a string scalar", i, s)
+				log.DEBUG("  arg[%d]: %v is not a string scalar", i, s)
 				return nil, ansi.Errorf("@c{$.%s}@R{ is a map; only scalars are supported here}", v.Reference)
 
 			case []interface{}:
-				DEBUG("  arg[%d]: %v is not a string scalar", i, s)
+				log.DEBUG("  arg[%d]: %v is not a string scalar", i, s)
 				return nil, ansi.Errorf("@c{$.%s}@R{ is a list; only scalars are supported here}", v.Reference)
 
 			default:
@@ -200,7 +200,7 @@ func (o AwsOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
 			}
 
 		default:
-			DEBUG("  arg[%d]: I don't know what to do with '%v'", i, arg)
+			log.DEBUG("  arg[%d]: I don't know what to do with '%v'", i, arg)
 			return nil, fmt.Errorf("%s operator only accepts string literals and key reference arguments", o.variant)
 		}
 	}
@@ -210,7 +210,7 @@ func (o AwsOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
 		return nil, err
 	}
 
-	DEBUG("     [0]: Using %s key '%s'\n", o.variant, key)
+	log.DEBUG("     [0]: Using %s key '%s'\n", o.variant, key)
 
 	value := "REDACTED"
 
